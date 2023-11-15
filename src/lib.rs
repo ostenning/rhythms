@@ -22,6 +22,10 @@
 
 use heapless::Vec;
 
+pub enum Error {
+    OutOfBounds,
+}
+
 /// The main pattern building block
 #[derive(Debug, Clone)]
 pub struct Pattern<const MAX_STEPS: usize = 64> {
@@ -170,13 +174,19 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
     /// let pattern = Pattern::<64>::new(3, 1, -1);
     /// assert_eq!([true, false, false], pattern.as_slice());
     /// ```
-    pub fn rotate(&mut self, rotation: isize) {
+    pub fn rotate(&mut self, rotation: isize) -> Result<(), Error> {
+        if rotation.unsigned_abs() >= self.steps.len() {
+            return Err(Error::OutOfBounds);
+        }
+
         self.rotation = rotation;
         if rotation.is_positive() {
             self.steps.rotate_right(rotation as usize);
         } else if rotation.is_negative() {
             self.steps.rotate_left(rotation.unsigned_abs());
         }
+
+        Ok(())
     }
 
     /// Clears all pulses from a pattern
@@ -216,6 +226,10 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
     pub fn resize(&mut self, length: usize) {
         self.steps.resize(length, false).unwrap();
         self.length = length;
+
+        if self.cursor >= length - 1 {
+            self.cursor = 0;
+        }
     }
 
     /// Moves the pattern cursor to the first step
