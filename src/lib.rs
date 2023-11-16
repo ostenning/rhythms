@@ -273,6 +273,18 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
         };
     }
 
+    pub fn increment_cursor(&mut self) {
+        self.cursor += 1;
+
+        if self.cursor >= self.steps.len() {
+            self.cursor = 0;
+        }
+    }
+
+    pub fn current_step(&mut self) -> bool {
+        self.steps[self.cursor]
+    }
+
     /// Returns the state of a step
     ///
     /// # Arguments
@@ -307,6 +319,10 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
     /// ```
     pub fn len(&self) -> usize {
         self.steps.len()
+    }
+
+    pub fn cursor(&self) -> usize {
+        self.cursor
     }
 
     /// Returns a boolean slice reprensenting the pattern
