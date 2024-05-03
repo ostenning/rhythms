@@ -22,6 +22,7 @@
 
 use heapless::Vec;
 
+#[derive(Debug)]
 pub enum Error {
     OutOfBounds,
 }
@@ -29,9 +30,10 @@ pub enum Error {
 /// The main pattern building block
 #[derive(Debug, Clone)]
 pub struct Pattern<const MAX_STEPS: usize = 64> {
-    steps: Vec<bool, MAX_STEPS>,
+    pub steps: Vec<bool, MAX_STEPS>,
     length: usize,
     pulses: usize,
+    padding: usize,
     rotation: isize,
     cursor: usize,
 }
@@ -52,10 +54,11 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
     /// let pattern = Pattern::<64>::new(4, 2, 0);
     /// assert_eq!([true, false, true, false], pattern.as_slice());
     /// ```
-    pub fn new(length: usize, pulses: usize, rotation: isize) -> Self {
+    pub fn new(length: usize, pulses: usize, padding: usize, rotation: isize) -> Self {
         let mut pattern = Pattern::<MAX_STEPS>::with_length(length);
         pattern.pulses(pulses);
         pattern.rotate(rotation);
+        pattern.set_padding(padding);
         pattern
     }
 
@@ -80,6 +83,7 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
         Self {
             steps,
             length,
+            padding: 0,
             pulses: 0,
             rotation: 0,
             cursor: 0,
@@ -105,6 +109,7 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
             length: slice.len(),
             cursor: 0,
             pulses: 0,
+            padding: 0,
             rotation: 0,
         }
     }
@@ -148,11 +153,20 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
                 self.steps.push(false).unwrap();
             }
         }
-
-        if self.length > 0 && self.pulses > 0 {
-            let offset = self.length / self.pulses - 1;
-            self.steps.rotate_right(offset);
+        for _ in 0..self.padding {
+            if self.steps.push(false).is_err() {
+                break;
+            }
         }
+
+        // if self.length > 0 && self.pulses > 0 {
+        //     let offset = self.length / self.pulses - 1;
+        //     self.steps.rotate_right(offset);
+        // }
+    }
+
+    pub fn num_pulses(&self) -> usize {
+        self.pulses
     }
 
     /// Rotates the current pattern
@@ -174,9 +188,9 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
     /// let pattern = Pattern::<64>::new(3, 1, -1);
     /// assert_eq!([true, false, false], pattern.as_slice());
     /// ```
-    pub fn rotate(&mut self, rotation: isize) -> Result<(), Error> {
+    pub fn rotate(&mut self, rotation: isize) {
         if rotation.unsigned_abs() >= self.steps.len() {
-            return Err(Error::OutOfBounds);
+            return;
         }
 
         self.rotation = rotation;
@@ -185,8 +199,10 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
         } else if rotation.is_negative() {
             self.steps.rotate_left(rotation.unsigned_abs());
         }
+    }
 
-        Ok(())
+    pub fn rotation(&self) -> isize {
+        self.rotation
     }
 
     /// Clears all pulses from a pattern
@@ -223,13 +239,31 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
     /// assert_eq!(4, pattern.len());
     /// assert_eq!([false, false, false, false], pattern.as_slice());
     /// ```
-    pub fn resize(&mut self, length: usize) {
-        self.steps.resize(length, false).unwrap();
+    pub fn resize(&mut self, mut length: usize) {
+        if length + self.padding > 64 {
+            length = 64 - self.padding;
+        }
+
+        self.steps.resize(length + self.padding, false).unwrap();
         self.length = length;
 
-        if self.cursor >= length - 1 {
+        if self.cursor >= self.total_length() - 1 {
             self.cursor = 0;
         }
+    }
+
+    pub fn set_padding(&mut self, padding: usize) {
+        if padding + self.length > 64 {
+            self.padding = 64 - self.length;
+        } else {
+            self.padding = padding.max(0);
+        }
+
+        self.pulses(self.pulses);
+    }
+
+    pub fn padding(&self) -> usize {
+        self.padding
     }
 
     /// Moves the pattern cursor to the first step
@@ -318,6 +352,10 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
     /// assert_eq!(8, pattern.len());
     /// ```
     pub fn len(&self) -> usize {
+        self.length
+    }
+
+    pub fn total_length(&self) -> usize {
         self.steps.len()
     }
 
@@ -363,11 +401,11 @@ impl<const MAX_STEPS: usize> Pattern<MAX_STEPS> {
     }
 
     fn is_in_range(&self, step: usize) -> bool {
-        step < self.len()
+        step < self.steps.len()
     }
 
     fn last_index(&self) -> usize {
-        self.len() - 1
+        self.steps.len() - 1
     }
 }
 
@@ -400,7 +438,7 @@ mod tests {
 
     #[test]
     fn bjorklund_example() {
-        let pattern = Pattern::<64>::new(13, 5, -3);
+        let pattern = Pattern::<64>::new(13, 5, -3, 0);
         assert_eq!(
             [
                 true, false, false, true, false, true, false, false, true, false, true, false,
@@ -412,7 +450,7 @@ mod tests {
 
     #[test]
     fn ruchenitza() {
-        let pattern = Pattern::<64>::new(7, 3, -3);
+        let pattern = Pattern::<64>::new(7, 3, -3, 0);
         assert_eq!(
             [true, false, true, false, true, false, false],
             pattern.as_slice()
@@ -421,25 +459,25 @@ mod tests {
 
     #[test]
     fn york_samai() {
-        let pattern = Pattern::<64>::new(6, 5, 1);
+        let pattern = Pattern::<64>::new(6, 5, 1, 0);
         assert_eq!([true, false, true, true, true, true], pattern.as_slice());
     }
 
     #[test]
     fn cumbia() {
-        let pattern = Pattern::<64>::new(4, 3, 1);
+        let pattern = Pattern::<64>::new(4, 3, 1, 0);
         assert_eq!([true, false, true, true], pattern.as_slice());
     }
 
     #[test]
     fn khafif_e_ramal() {
-        let pattern = Pattern::<64>::new(5, 2, -3);
+        let pattern = Pattern::<64>::new(5, 2, -3, 0);
         assert_eq!([true, false, true, false, false], pattern.as_slice());
     }
 
     #[test]
     fn agsag_samai() {
-        let pattern = Pattern::<64>::new(9, 5, 1);
+        let pattern = Pattern::<64>::new(9, 5, 1, 0);
         assert_eq!(
             [true, false, true, false, true, false, true, false, true],
             pattern.as_slice()
@@ -448,7 +486,7 @@ mod tests {
 
     #[test]
     fn venda() {
-        let pattern = Pattern::<64>::new(12, 5, 0);
+        let pattern = Pattern::<64>::new(12, 5, 0, 0);
         assert_eq!(
             [true, false, false, true, false, true, false, false, true, false, true, false],
             pattern.as_slice()
@@ -457,7 +495,7 @@ mod tests {
 
     #[test]
     fn bendir() {
-        let pattern = Pattern::<64>::new(8, 7, 1);
+        let pattern = Pattern::<64>::new(8, 7, 1, 0);
         assert_eq!(
             [true, false, true, true, true, true, true, true],
             pattern.as_slice()
@@ -466,7 +504,7 @@ mod tests {
 
     #[test]
     fn overflow() {
-        let pattern = Pattern::<64>::new(8, 9, 0);
+        let pattern = Pattern::<64>::new(8, 9, 0, 0);
         assert_eq!(
             [true, true, true, true, true, true, true, true],
             pattern.as_slice()
@@ -484,5 +522,17 @@ mod tests {
         let mut pattern = Pattern::<64>::with_length(2);
         pattern.pulses(0);
         assert_eq!([false, false], pattern.as_slice());
+    }
+
+    #[test]
+    fn padding() {
+        let pattern = Pattern::<64>::new(12, 5, 5, 0);
+        assert_eq!(
+            [
+                true, false, false, true, false, true, false, false, true, false, true, false,
+                false, false, false, false, false
+            ],
+            pattern.as_slice()
+        );
     }
 }
